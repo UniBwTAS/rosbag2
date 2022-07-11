@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "rosbag2_interfaces/msg/server_status.hpp"
+#include "rosbag2_interfaces/srv/open_bag.hpp"
 #include "rosbag2_storage/storage_options.hpp"
 #include "rosbag2_storage/yaml.hpp"
 #include "rosbag2_transport/bag_rewrite.hpp"
@@ -158,6 +160,138 @@ public:
 
     exec.cancel();
     spin_thread.join();
+  }
+
+  void start_play_server()
+  {
+      rosbag2_storage::StorageOptions storage_options;
+      PlayOptions play_options;
+
+      std::unique_ptr<rosbag2_cpp::Reader> reader;
+      std::shared_ptr<rosbag2_transport::Player> player;
+
+      std::mutex setup_mutex;
+      std::mutex play_mutex;
+
+      rclcpp::executors::SingleThreadedExecutor exec;
+
+      auto server = std::make_shared<rclcpp::Node>("rosbag2_play_server");
+      auto status_publisher = server->create_publisher<rosbag2_interfaces::msg::ServerStatus>(
+          std::string(server->get_name()) + "/server_status", rclcpp::QoS(1).transient_local());
+      auto open_bag_service = server->create_service<rosbag2_interfaces::srv::OpenBag>(
+          std::string(server->get_name()) + "/open_bag",
+          [&](const std::shared_ptr<rosbag2_interfaces::srv::OpenBag::Request> request,
+              std::shared_ptr<rosbag2_interfaces::srv::OpenBag::Response> response)
+          {
+              std::lock_guard<std::mutex> setup_lock_guard(setup_mutex);
+              RCLCPP_INFO_STREAM(server->get_logger(), "Received an 'OpenBag.srv' request...");
+
+              // stop/close previous player node if it exists
+              if (player)
+              {
+                  exec.remove_node(player);
+                  player->stop();
+                  {
+                      // wait until play() returned
+                      std::lock_guard<std::mutex> play_lock_guard(play_mutex);
+                  }
+              }
+              if (reader)
+              {
+                  reader->close();
+                  reader.reset();
+              }
+
+              // set storage options
+              const auto& s_opt = request->storage_options;
+              storage_options.uri = s_opt.uri;
+              storage_options.storage_id = s_opt.storage_id;
+              storage_options.storage_config_uri = s_opt.storage_config_uri;
+
+              // set play options
+              const auto& p_opt = request->play_options;
+              play_options.read_ahead_queue_size = p_opt.read_ahead_queue_size;
+              play_options.node_prefix = p_opt.node_prefix;
+              play_options.rate = p_opt.rate;
+              play_options.topics_to_filter = p_opt.topics_to_filter;
+              // play_options.topic_qos_profile_overrides = p_opt.topic_qos_profile_overrides;
+              play_options.loop = p_opt.loop;
+              play_options.topic_remapping_options = p_opt.topic_remapping_options;
+              play_options.clock_publish_frequency = p_opt.clock_publish_frequency;
+              play_options.delay = p_opt.delay;
+              play_options.playback_duration = p_opt.playback_duration;
+              play_options.start_paused = p_opt.start_paused;
+              play_options.start_offset = rclcpp::Duration(p_opt.start_offset).nanoseconds();
+              play_options.disable_keyboard_controls = p_opt.disable_keyboard_controls;
+              play_options.pause_resume_toggle_key = enum_str_to_key_code(p_opt.pause_resume_toggle_key);
+              play_options.play_next_key = enum_str_to_key_code(p_opt.play_next_key);
+              play_options.increase_rate_key = enum_str_to_key_code(p_opt.increase_rate_key);
+              play_options.decrease_rate_key = enum_str_to_key_code(p_opt.decrease_rate_key);
+              play_options.wait_acked_timeout = p_opt.wait_acked_timeout;
+              play_options.disable_loan_message = p_opt.disable_loan_message;
+
+              // start new player node
+              try
+              {
+                  reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_options);
+                  player =
+                      std::make_shared<rosbag2_transport::Player>(std::move(reader), storage_options, play_options);
+                  response->server_status.success = true;
+                  response->server_status.error_message = "";
+                  response->server_status.start = player->get_start_time();
+                  response->server_status.end = player->get_end_time();
+                  for (const auto& topic_info : player->get_all_topics_and_types())
+                  {
+                      response->server_status.topic_names.push_back(topic_info.name);
+                      response->server_status.topic_types.push_back(topic_info.type);
+                  }
+              }
+              catch (const std::runtime_error& e)
+              {
+                  response->server_status.success = false;
+                  response->server_status.error_message = e.what();
+                  player.reset();
+                  reader.reset();
+              }
+              response->server_status.storage_options = s_opt;
+              response->server_status.play_options = p_opt;
+
+              // publish additionally latched in order to be able to retrieve this information even when not listening
+              // now and in order to notify existing nodes that the player has changed
+              status_publisher->publish(response->server_status);
+
+              if (player)
+                  exec.add_node(player);
+          });
+      exec.add_node(server);
+
+      RCLCPP_INFO_STREAM(server->get_logger(), "Waiting for 'OpenBag.srv' request...");
+      auto spin_thread = std::thread([&exec]() { exec.spin(); });
+      while (rclcpp::ok())
+      {
+          {
+              // wait if setup of reader and player is ongoing
+              std::lock_guard<std::mutex> setup_lock_guard(setup_mutex);
+          }
+
+          if (!player)
+          {
+              // this happens when no open bag request has arrived yet or previous bag was finished
+              std::this_thread::sleep_for(std::chrono::milliseconds{500});
+              continue;
+          }
+
+          {
+              // ensure that player is not changed until play returns
+              std::lock_guard<std::mutex> play_lock_guard(play_mutex);
+              player->play();
+              player.reset();
+              RCLCPP_INFO_STREAM(server->get_logger(), "Bag finished!");
+              RCLCPP_INFO_STREAM(server->get_logger(), "Waiting for 'OpenBag.srv' request...");
+          }
+      }
+      exec.cancel();
+      spin_thread.join();
   }
 
   void burst(
@@ -336,6 +470,7 @@ PYBIND11_MODULE(_transport, m) {
   py::class_<rosbag2_py::Player>(m, "Player")
   .def(py::init())
   .def("play", &rosbag2_py::Player::play, py::arg("storage_options"), py::arg("play_options"))
+  .def("start_play_server", &rosbag2_py::Player::start_play_server)
   .def("burst", &rosbag2_py::Player::burst)
   ;
 

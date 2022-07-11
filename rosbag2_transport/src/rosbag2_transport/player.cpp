@@ -894,4 +894,29 @@ inline bool Player::shall_stop_at_timestamp(const rcutils_time_point_value_t & m
   }
 }
 
+std::vector<rosbag2_storage::TopicMetadata> Player::get_all_topics_and_types()
+{
+    std::lock_guard<std::mutex> lk(reader_mutex_);
+    return reader_->get_all_topics_and_types();
+}
+
+rclcpp::Time Player::get_start_time()
+{
+    std::lock_guard<std::mutex> lk(reader_mutex_);
+    return rclcpp::Time(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(reader_->get_metadata().starting_time.time_since_epoch())
+            .count(),
+        RCL_ROS_TIME);
+}
+
+rclcpp::Time Player::get_end_time()
+{
+    std::lock_guard<std::mutex> lk(reader_mutex_);
+    return rclcpp::Time(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(reader_->get_metadata().starting_time.time_since_epoch())
+                .count() +
+            reader_->get_metadata().duration.count(),
+        RCL_ROS_TIME);
+}
+
 }  // namespace rosbag2_transport

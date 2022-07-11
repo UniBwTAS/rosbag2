@@ -1,0 +1,20 @@
+# See rosbag2_transport::PlayOptions
+uint32 read_ahead_queue_size
+string node_prefix
+float32 rate
+string[] topics_to_filter
+# TODO: Desired QoS Profiles (topic_qos_profile_overrides)
+bool loop
+string[] topic_remapping_options
+float64 clock_publish_frequency
+builtin_interfaces/Duration delay
+builtin_interfaces/Duration playback_duration
+bool start_paused
+builtin_interfaces/Duration start_offset
+bool disable_keyboard_controls
+string pause_resume_toggle_key
+string play_next_key
+string increase_rate_key
+string decrease_rate_key
+int64 wait_acked_timeout
+bool disable_loan_message

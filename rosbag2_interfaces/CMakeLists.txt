@@ -13,11 +13,15 @@ find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/PlayOptions.msg"
   "msg/ReadSplitEvent.msg"
+  "msg/ServerStatus.msg"
+  "msg/StorageOptions.msg"
   "msg/WriteSplitEvent.msg"
   "srv/Burst.srv"
   "srv/GetRate.srv"
   "srv/IsPaused.srv"
+  "srv/OpenBag.srv"
   "srv/Pause.srv"
   "srv/Play.srv"
   "srv/PlayNext.srv"

@@ -49,6 +49,7 @@
 #include "rosbag2_interfaces/srv/toggle_paused.hpp"
 #include "rosbag2_storage/serialized_bag_message.hpp"
 #include "rosbag2_storage/storage_options.hpp"
+#include "rosbag2_storage/topic_metadata.hpp"
 
 #include "rosbag2_transport/play_options.hpp"
 #include "rosbag2_transport/visibility_control.hpp"
@@ -198,6 +199,15 @@ public:
   /// #add_on_play_message_post_callback
   ROSBAG2_TRANSPORT_PUBLIC
   void delete_on_play_message_callback(const callback_handle_t & handle);
+
+  ROSBAG2_TRANSPORT_PUBLIC
+  std::vector<rosbag2_storage::TopicMetadata> get_all_topics_and_types();
+
+  ROSBAG2_TRANSPORT_PUBLIC
+  rclcpp::Time get_start_time();
+
+  ROSBAG2_TRANSPORT_PUBLIC
+  rclcpp::Time get_end_time();
 
 protected:
   struct play_msg_callback_data
