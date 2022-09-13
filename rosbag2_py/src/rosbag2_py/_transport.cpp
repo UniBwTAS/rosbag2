@@ -220,6 +220,7 @@ public:
               play_options.clock_publish_frequency = p_opt.clock_publish_frequency;
               play_options.delay = p_opt.delay;
               play_options.playback_duration = p_opt.playback_duration;
+              // play_options.playback_until_timestamp = rclcpp::Time(p_opt.playback_until_timestamp).nanoseconds();
               play_options.start_paused = p_opt.start_paused;
               play_options.start_offset = rclcpp::Duration(p_opt.start_offset).nanoseconds();
               play_options.disable_keyboard_controls = p_opt.disable_keyboard_controls;

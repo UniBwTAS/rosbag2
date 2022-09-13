@@ -9,6 +9,7 @@ string[] topic_remapping_options
 float64 clock_publish_frequency
 builtin_interfaces/Duration delay
 builtin_interfaces/Duration playback_duration
+builtin_interfaces/Time playback_until_timestamp
 bool start_paused
 builtin_interfaces/Duration start_offset
 bool disable_keyboard_controls
